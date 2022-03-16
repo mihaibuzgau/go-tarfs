@@ -66,19 +66,37 @@ func New(r io.Reader) (fs.FS, error) {
 
 		e := &entry{h, buf.Bytes(), nil}
 
-		tfs.files[name] = e
-
-		dir := path.Dir(name)
-		if dir == "." {
-			tfs.rootEntries = append(tfs.rootEntries, e)
-		} else {
-			if parent, ok := tfs.files[path.Dir(name)]; ok {
-				parent.entries = append(parent.entries, e)
-			}
-		}
+		addParent(name, e, tfs)
 	}
 
 	return tfs, nil
+}
+
+func addParent(name string, e *entry, tfs *tarfs) {
+	name = strings.TrimPrefix(name, "/")
+	if tfs.files[name] != nil {
+		return
+	}
+	tfs.files[name] = e
+
+	dir := path.Dir(name)
+	if dir == "." {
+		tfs.rootEntries = append(tfs.rootEntries, e)
+		return
+	}
+
+	if _, ok := tfs.files[dir]; !ok {
+		hParent := &tar.Header{
+			Typeflag: tar.TypeDir,
+			Name:     dir,
+		}
+		eParent := &entry{hParent, []byte{}, nil}
+		addParent(dir, eParent, tfs)
+	}
+
+	if parent, ok := tfs.files[dir]; ok {
+		parent.entries = append(parent.entries, e)
+	}
 }
 
 var _ fs.FS = &tarfs{}
